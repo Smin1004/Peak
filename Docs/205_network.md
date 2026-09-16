@@ -17,7 +17,7 @@
 | 호스트 이탈 | 세션 종료 → 전원 Result(실패) → Lobby | 호스트 마이그레이션 없음 (T2 도 미정) |
 | WebGL | 없음 | |
 
-⚠ 확인 필요 (`301` Q1): M0 부터 NGO 를 켜고 갈지, M3 까지 오프라인으로 만들고 M4 에 붙일지. **기획 세션 권고는 M0 부터** — 이유: 플레이어·아이템·캠프파이어가 전부 네트워크 오브젝트인데 나중에 붙이면 전부 다시 만진다. 비용: 초반 매 씬에 `NetworkManager` 가 필요하고 `StartHost()` 를 자동 호출하는 `Bootstrapper` 가 있어야 한다 (6장).
+**M0 부터 NGO 를 켠다** (`301` D13). 플레이어·아이템·캠프파이어가 전부 네트워크 오브젝트인데 나중에 붙이면 전부 다시 만든다. 비용: Boot 씬에 `NetworkManager` 가 있고, `StartHost()` 를 자동 호출하는 `Bootstrapper` 가 있어야 한다 (6장). M0~M3 은 Relay 없이 로컬 Unity Transport 로 호스트만 띄운다.
 
 ## 2. 매치 FSM (`GameManager`, Boot 씬, 호스트 권한)
 

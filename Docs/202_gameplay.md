@@ -38,7 +38,7 @@ Player (NetworkObject, Rigidbody, CapsuleCollider 1.8×0.35)
 ```
 
 - Rigidbody: 비-kinematic, 회전 고정, `interpolation = Interpolate`. 등반 중에는 `useGravity = false` + 속도 직접 제어
-- 카메라: 오너 로컬. 오빗 거리 4 m, 벽 충돌 시 당김. Cinemachine 3 `ThirdPersonFollow` 또는 직접 구현 ⚠ (`201` 1.1)
+- 카메라: 오너 로컬. **Cinemachine 3** — `CinemachineCamera` + Third Person Follow(어깨 오프셋, 거리 4 m) + `CinemachineDeoccluder`(지형 레이어) (`301` D14). 오너가 스폰될 때 카메라 리그를 생성하고 `Follow`/`LookAt` 을 자기 Transform 으로 설정
 
 ## 3. 상태 기계
 

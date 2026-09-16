@@ -24,7 +24,7 @@
 | `com.unity.services.multiplayer` | Sessions + Relay (M4 부터 사용, 미리 설치) |
 | `com.unity.transport` | NGO 의존 |
 | `com.unity.multiplayer.playmode` | 한 PC 다중 클라이언트 테스트 |
-| `com.unity.cinemachine` (3.x) | 3인칭 카메라 ⚠ 확인 필요 — 직접 구현해도 됨 |
+| `com.unity.cinemachine` (3.x) | 3인칭 카메라 (`301` D14) |
 
 | 제거 후보 | 이유 |
 |---|---|
@@ -139,7 +139,7 @@ enum MatchPhase { Lobby, Generating, Playing, Result }
 
 ## 6. 코딩 규칙
 
-1. **NetworkBehaviour 기준**: 플레이어·월드 오브젝트는 M0 부터 `NetworkBehaviour`. 싱글도 호스트 모드로 돈다 (`205` 1장) ⚠ 확인 필요 (`301` Q1)
+1. **NetworkBehaviour 기준**: 플레이어·월드 오브젝트는 M0 부터 `NetworkBehaviour`. 싱글도 호스트 모드로 돈다 (`205` 1장, `301` D13)
 2. **입력은 로컬 오너만**: `IsOwner` 아니면 입력 처리 안 함. 카메라·HUD 도 오너만 생성
 3. **권한 규칙 준수**: `205` 3장 표를 따른다. 서버 권한 오브젝트는 `ServerRpc` 로 요청
 4. **결정적 생성**: `ProcGen/` 안에서 `UnityEngine.Random`, `Physics`, `Time`, `Dictionary` 순회 순서 의존 **금지**. `System.Random(seed)` 하나를 인자로 넘겨 쓴다. 부동소수점은 같은 플랫폼(Windows x64)만 가정
@@ -192,7 +192,7 @@ enum MatchPhase { Lobby, Generating, Playing, Result }
 
 ## 9. Git
 
-- 브랜치: `main` 하나. 워커 작업이 크면 `feat/<이름>` 후 병합 ⚠ 확인 필요 (혼자면 main 직행도 무방)
+- 브랜치: **`main` 직행** (`301` D15). 워커를 병렬로 돌릴 때만 `feat/<이름>` 후 병합
 - 커밋 단위 = 워커 작업 1건. 메시지: `[M1] 등반 상태 기계 v1` 처럼 마일스톤 태그 접두
 - `ProjectSettings/`·`Packages/manifest.json` 변경은 별도 커밋 (되돌리기 쉽게)
 - `Library/`, `Temp/`, `Logs/`, `UserSettings/` 는 이미 무시됨. `Builds/` 도 무시
