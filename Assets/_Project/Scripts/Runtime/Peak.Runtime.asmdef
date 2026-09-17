@@ -1,0 +1,26 @@
+{
+    "name": "Peak.Runtime",
+    "rootNamespace": "Peak",
+    "references": [
+        "Unity.Netcode.Runtime",
+        "Unity.InputSystem",
+        "Unity.Cinemachine",
+        "Unity.TextMeshPro",
+        "Unity.Multiplayer.Playmode"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [
+        {
+            "name": "com.unity.multiplayer.playmode",
+            "expression": "1.0.0",
+            "define": "PEAK_HAS_MPPM"
+        }
+    ],
+    "noEngineReferences": false
+}
