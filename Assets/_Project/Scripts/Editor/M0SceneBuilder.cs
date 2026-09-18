@@ -73,7 +73,7 @@ namespace Peak.Editor
         /// <summary>Unity Plane 프리미티브는 10 m × 10 m. 200 m 지면 = 스케일 20, 50 m = 스케일 5.</summary>
         private const float PlaneSizeMeters = 10f;
         private const float GameGroundMeters = 200f;
-        private const float SandboxGroundMeters = 50f;
+        private const float SandboxGroundMeters = 120f;
         private static readonly Vector3 SpawnPointPosition = new Vector3(0f, 1f, 0f);
         private static readonly Vector3 LightEuler = new Vector3(50f, -30f, 0f);
         private static readonly Vector3 CameraPosition = new Vector3(0f, 4f, -10f);
@@ -347,7 +347,7 @@ namespace Peak.Editor
 
         private static string ScenePath(string sceneName) => $"{ScenesDir}/{sceneName}.unity";
 
-        private static void BuildScene(string sceneName, Action<Scene> populate)
+        internal static void BuildScene(string sceneName, Action<Scene> populate)
         {
             string path = ScenePath(sceneName);
             bool isNew = !File.Exists(path);
@@ -393,7 +393,7 @@ namespace Peak.Editor
             }
         }
 
-        private static GameObject EnsureRoot(Scene scene, string name)
+        internal static GameObject EnsureRoot(Scene scene, string name)
         {
             foreach (var root in scene.GetRootGameObjects())
             {
