@@ -24,7 +24,7 @@
 | `com.unity.services.multiplayer` | Sessions + Relay (M4 부터 사용, 미리 설치) |
 | `com.unity.transport` | NGO 의존 |
 | `com.unity.multiplayer.playmode` | 한 PC 다중 클라이언트 테스트 |
-| `com.unity.cinemachine` (3.x) | 3인칭 카메라 (`301` D14) |
+| `com.unity.cinemachine` (3.x) | 1인칭 카메라 (하드락), 착지 흔들림(Impulse), 기절·유령 카메라 전환 (`301` D16) |
 
 | 제거 후보 | 이유 |
 |---|---|

@@ -70,5 +70,37 @@ namespace Peak.Core
         [Header("상호작용 (202 8·9장)")]
         [Tooltip("상호작용 레이캐스트 거리 m — 202 9장")]
         public float interactRange = 2.5f;
+
+        [Header("이동 조작감 (M0-2)")]
+        [Tooltip("공중 제어 배율 0..1. 지상 가속도에 곱한다. 입력이 없으면 공중 관성 유지 — M0-2 추가 — 202 9장 반영 필요")]
+        [Range(0f, 1f)]
+        public float airControl = 0.3f;
+
+        [Tooltip("지상 가감속 시간 s. 현재 속도·목표 속도 중 큰 쪽을 이 시간에 바꾸는 가속도 — M0-2 추가 — 202 9장 반영 필요")]
+        public float groundAccelTime = 0.1f;
+
+        [Tooltip("캐릭터가 이동 방향으로 도는 최대 각속도 rad/s — M0-2 추가 — 202 9장 반영 필요")]
+        public float turnSpeed = 10f;
+
+        [Header("카메라 (M0-2)")]
+        [Tooltip("Look 입력(마우스 델타 px) → 카메라 회전 도 배율 — M0-2 추가 — 202 9장 반영 필요")]
+        public float lookSensitivity = 0.15f;
+
+        [Tooltip("카메라 pitch 하한 도 (음수 = 위를 봄) — M0-2 추가 — 202 9장 반영 필요")]
+        public float pitchMin = -40f;
+
+        [Tooltip("카메라 pitch 상한 도 (양수 = 아래를 봄) — M0-2 추가 — 202 9장 반영 필요")]
+        public float pitchMax = 70f;
+
+        [Header("지면 판정 (M0-2)")]
+        [Tooltip("지면 SphereCast 반지름 m. 캡슐 반지름보다 작아야 한다 — M0-2 추가 — 202 9장 반영 필요")]
+        public float groundCheckRadius = 0.3f;
+
+        [Tooltip("캡슐 바닥 아래로 지면을 찾는 거리 m — M0-2 추가 — 202 9장 반영 필요")]
+        public float groundCheckDistance = 0.15f;
+
+        [Header("스폰 (205 4장)")]
+        [Tooltip("플레이어 스폰 간격 m (SpawnPoint + 접속 순서 × 간격, X 축) — M0-2 추가 — 202 9장 반영 필요")]
+        public float spawnSpacing = 1.5f;
     }
 }

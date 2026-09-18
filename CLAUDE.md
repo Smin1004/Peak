@@ -1,4 +1,4 @@
-# Peak — PEAK 모작 (협동 등반 · 절차 생성)
+# Peak — PEAK 모작 (1인칭 협동 등반 · 절차 생성)
 
 Unity 6 (6000.0.66f2), 3D URP, 신 Input System, Netcode for GameObjects + Unity Multiplayer Services. 1인 개발 + AI 워커 세션. 배포 없음.
 

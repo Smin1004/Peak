@@ -39,13 +39,14 @@ Lobby ──(호스트 [시작])──→ Generating ──(전원 GenerationDon
 
 | 대상 | 방식 | 권한 | 비고 |
 |---|---|---|---|
-| 플레이어 위치·회전 | `NetworkTransform` (오너 권한 변형, `ClientNetworkTransform`) | 오너 | 보간 켬. 등반 중 회전은 표면 법선 기준이므로 회전도 전송 |
+| 플레이어 위치·회전 | `NetworkTransform` (오너 권한) | 오너 | 보간 켬. 몸 yaw = 카메라 yaw (1인칭), 등반 중은 표면 법선 기준 — 회전도 전송 |
+| 시선 pitch (M4) | `NetworkVariable<sbyte>` (1° 단위, 오너 쓰기) | 오너 | 1인칭 협동에서 남이 어디를 보는지 표시 — 비오너 Visual 의 코·머리 기울임 (`202` 12.7). yaw 는 몸 회전으로 이미 전달됨 |
 | 플레이어 상태 기계 상태 | `NetworkVariable<byte>` | 오너 | Visual 표현·마커용 |
 | 스태미나·보너스 | `NetworkVariable<float>` ×2 (전송 주기 10Hz) | 오너 | 남의 바를 볼 일은 마커 정도 |
 | 상태이상 목록 | `NetworkList<(kind, amount)>` 또는 고정 배열 `NetworkVariable` | 오너 | 캠프파이어 조건·마커 색에 필요 |
 | `PlayerPhase` (Alive/Unconscious/Dead) | `NetworkVariable` | 오너 | 캠프파이어 점화 조건은 **호스트가 이 값들을 읽어** 판정 |
 | 남에게 상태이상 부여 (아이템 사용, 부활) | `ServerRpc(target, kind, amount)` → 호스트가 `ClientRpc` 로 대상 오너에게 → 오너가 적용 | 요청자 → 호스트 → 오너 | 오너 권한 원칙 유지 |
-| 업기/내려놓기 | `ServerRpc` → 호스트가 `carriedBy` `NetworkVariable` 설정 → 업힌 쪽은 오너가 `NetworkTransform` 을 끄고 운반자에 부착 | 호스트 결정, 오너 적용 | 위치는 운반자 기준 로컬 오프셋 |
+| 업기/내려놓기 | `ServerRpc` → 호스트가 `carriedBy` `NetworkVariable` 설정 → 업힌 쪽은 오너가 `NetworkTransform` 을 끄고 운반자에 부착 | 호스트 결정, 오너 적용 | 위치는 운반자 기준 로컬 오프셋. 운반자 화면에서 업힌 몸은 그림자만 (`202` 12.6) |
 | 캠프파이어 점화 상태·점화 시각 | `NetworkVariable<bool>`, `NetworkVariable<double>`(서버 시간) | 호스트 | 점화 시각으로 안개를 결정적 계산 |
 | 안개 | 전송 없음. 각 클라이언트가 `점화 시각 + GameTuning` 으로 반경 계산 | — | 서버 시간은 `NetworkManager.ServerTime` |
 | 가방 열림, 아이템 스폰 | 호스트가 `NetworkObject` 스폰 | 호스트 | 아이템 내용은 가방의 시드로 결정 (`206` 3장) — 전송은 스폰만 |

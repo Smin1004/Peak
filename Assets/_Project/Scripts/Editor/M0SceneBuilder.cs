@@ -22,6 +22,8 @@ namespace Peak.Editor
 {
     /// <summary>
     /// Peak > Setup > Rebuild M0 Scenes — M0 골격 씬 5개·데이터 에셋·레이어·빌드 목록을 코드로 (재)생성한다 (Docs/Prompts/M0-1_skeleton.md 4·7장).
+    /// M0-2: Game·Sandbox_Climb 임시 카메라 삭제, Sandbox_Climb 임시 경사, Sandbox_ProcGen SpawnPoint 삭제, [Boot]/PlayerSpawner (Docs/Prompts/M0-2_player.md 7장).
+    /// 실행 순서: Peak > Setup > Rebuild Player Prefab → 이 메뉴.
     /// 멱등: 이미 있는 씬은 열어서 같은 이름의 오브젝트를 찾아 설정만 다시 맞춘다 (fileID 가 바뀌지 않으므로 두 번 실행해도 diff 없음).
     /// 손으로 배치하지 않는다 — 씬을 바꾸려면 이 파일을 고치고 다시 실행한다 (Docs/201_common.md 3장).
     /// </summary>
@@ -30,12 +32,12 @@ namespace Peak.Editor
         private const string MenuPath = "Peak/Setup/Rebuild M0 Scenes";
 
         // ── 경로 ─────────────────────────────────────────────────────────
-        private const string ProjectRoot = "Assets/_Project";
+        internal const string ProjectRoot = "Assets/_Project";
         private const string ScenesDir = ProjectRoot + "/Scenes";
         private const string DataDir = ProjectRoot + "/Data";
         private const string FontsDir = ProjectRoot + "/UI/Fonts";
         private const string TuningAssetPath = DataDir + "/GameTuning.asset";
-        private const string ThemeAssetPath = DataDir + "/VisualTheme.asset";
+        internal const string ThemeAssetPath = DataDir + "/VisualTheme.asset";
         private const string NetworkPrefabsAssetPath = DataDir + "/NetworkPrefabs.asset";
         private const string FontAssetPath = FontsDir + "/MalgunGothic SDF.asset";
         private const string TagManagerPath = "ProjectSettings/TagManager.asset";
@@ -55,7 +57,10 @@ namespace Peak.Editor
         private const string MainCameraTag = "MainCamera";
         private const string LightName = "Directional Light";
         private const string GroundName = "Ground";
-        private const string SpawnPointName = "SpawnPoint";
+        private const string SpawnPointName = PlayerSpawner.SpawnPointName;
+        private const string PlayerSpawnerName = "PlayerSpawner";
+        private const string Ramp30Name = "Temp_Ramp30";
+        private const string Ramp60Name = "Temp_Ramp60";
         private const string BootstrapperName = "Bootstrapper";
         private const string LobbyCanvasName = "LobbyCanvas";
 
@@ -74,6 +79,16 @@ namespace Peak.Editor
         private static readonly Vector3 CameraPosition = new Vector3(0f, 4f, -10f);
         private static readonly Vector3 CameraEuler = new Vector3(15f, 0f, 0f);
         private static readonly Vector3 LobbyCameraPosition = new Vector3(0f, 1f, -10f);
+
+        // ── Sandbox_Climb 임시 경사 (M0-2 7장: 경사 정지·미끄러짐 확인용. M1 벽 세트가 대체) ──
+        private const float Ramp30Angle = 30f;
+        private const float Ramp60Angle = 60f;
+        /// <summary>폭(X) · 두께(Y) · 길이(Z) m.</summary>
+        private static readonly Vector3 RampSize = new Vector3(4f, 0.5f, 6f);
+        private const float Ramp30X = -5f;
+        private const float Ramp60X = 5f;
+        /// <summary>윗면의 낮은 모서리가 지면(y 0)에 닿는 Z. SpawnPoint(0, 1, 0) 에서 몇 걸음.</summary>
+        private const float RampStartZ = 4f;
 
         // ── UI 수치 (Docs/204_ui.md 3장: 1920×1080 Scale With Screen Size, match 0.5) ──
         private static readonly Vector2 ReferenceResolution = new Vector2(1920f, 1080f);
@@ -128,6 +143,8 @@ namespace Peak.Editor
             // 에셋은 여기서 존재만 보장한다. 참조는 각 씬을 연 뒤 다시 로드한다 — EditorSceneManager.OpenScene(Single) 이
             // 씬에서 참조되지 않는 에셋을 언로드해 로컬 변수의 참조가 fake-null 이 되기 때문 (M0-1 에서 실제로 겪음)
             EnsureAsset<GameTuning>(TuningAssetPath);
+            // 코드에 필드가 추가되면 에셋 파일에도 기본값을 써 둔다 ("에셋이 진실", 201 4장). 내용이 같으면 파일도 같다
+            AssetDatabase.ForceReserializeAssets(new[] { TuningAssetPath });
             EnsureAsset<VisualTheme>(ThemeAssetPath);
             EnsureNetworkPrefabsList();
             EnsureKoreanFont();
@@ -135,7 +152,7 @@ namespace Peak.Editor
             BuildScene(SceneNames.Boot, BuildBoot);
             BuildScene(SceneNames.Lobby, BuildLobby);
             BuildScene(SceneNames.Game, scene => BuildGame(scene, GameGroundMeters));
-            BuildScene(SceneNames.SandboxClimb, scene => BuildGame(scene, SandboxGroundMeters));
+            BuildScene(SceneNames.SandboxClimb, BuildSandboxClimb);
             BuildScene(SceneNames.SandboxProcGen, BuildSandboxProcGen);
 
             EnsureBuildScenes();
@@ -155,7 +172,7 @@ namespace Peak.Editor
             EnsureFolder(FontsDir);
         }
 
-        private static void EnsureFolder(string path)
+        internal static void EnsureFolder(string path)
         {
             if (AssetDatabase.IsValidFolder(path))
             {
@@ -263,7 +280,7 @@ namespace Peak.Editor
         /// NGO 네트워크 프리팹 목록. NGO 는 기본 목록을 Assets/DefaultNetworkPrefabs.asset 에 자동 생성하므로
         /// 프로젝트 설정의 경로를 _Project/Data 로 바꿔 우리 폴더 규칙(201 3장)을 지킨다. M0-2 가 Player 프리팹을 여기 등록한다.
         /// </summary>
-        private static NetworkPrefabsList EnsureNetworkPrefabsList()
+        internal static NetworkPrefabsList EnsureNetworkPrefabsList()
         {
             var settings = NetcodeForGameObjectsProjectSettings.instance;
             if (settings.NetworkPrefabsPath != NetworkPrefabsAssetPath)
@@ -390,7 +407,7 @@ namespace Peak.Editor
             return go;
         }
 
-        private static GameObject EnsureChild(GameObject parent, string name)
+        internal static GameObject EnsureChild(GameObject parent, string name)
         {
             var existing = parent.transform.Find(name);
             if (existing != null)
@@ -417,13 +434,13 @@ namespace Peak.Editor
             return go;
         }
 
-        private static T EnsureComponent<T>(GameObject go) where T : Component
+        internal static T EnsureComponent<T>(GameObject go) where T : Component
         {
             var component = go.GetComponent<T>();
             return component != null ? component : go.AddComponent<T>();
         }
 
-        private static void SetRef(Object target, string property, Object value)
+        internal static void SetRef(Object target, string property, Object value)
         {
             var so = new SerializedObject(target);
             var prop = so.FindProperty(property);
@@ -440,7 +457,7 @@ namespace Peak.Editor
         }
 
         /// <summary>씬을 연 뒤 다시 로드하는 필수 에셋. 없으면 에러 (Rebuild 앞단의 Ensure 가 만들었어야 한다).</summary>
-        private static T LoadRequired<T>(string path) where T : Object
+        internal static T LoadRequired<T>(string path) where T : Object
         {
             var asset = AssetDatabase.LoadAssetAtPath<T>(path);
             if (asset == null)
@@ -466,7 +483,7 @@ namespace Peak.Editor
             }
         }
 
-        private static void SetTransform(GameObject go, Vector3 position, Vector3 euler, Vector3 scale)
+        internal static void SetTransform(GameObject go, Vector3 position, Vector3 euler, Vector3 scale)
         {
             var t = go.transform;
             t.localPosition = position;
@@ -547,6 +564,11 @@ namespace Peak.Editor
             var theme = LoadRequired<VisualTheme>(ThemeAssetPath);
             var prefabsList = LoadRequired<NetworkPrefabsList>(NetworkPrefabsAssetPath);
             var font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontAssetPath);
+            var playerPrefab = AssetDatabase.LoadAssetAtPath<NetworkObject>(PlayerPrefabBuilder.PlayerPrefabPath);
+            if (playerPrefab == null)
+            {
+                Log.Error(LogCategory.Core, $"{PlayerPrefabBuilder.PlayerPrefabPath} 이 없다 — Peak > Setup > Rebuild Player Prefab 먼저 실행한 뒤 Rebuild M0 Scenes 를 다시");
+            }
 
             // NetworkManager: NGO 가 부모 오브젝트를 금지하므로 [Boot] 밖 별도 루트. 스스로 DontDestroyOnLoad 한다
             var managerGo = EnsureRoot(scene, NetworkManagerName);
@@ -558,6 +580,8 @@ namespace Peak.Editor
             }
             manager.NetworkConfig.NetworkTransport = transport;
             manager.NetworkConfig.EnableSceneManagement = true;
+            // 자동 스폰 금지 — 플레이어 스폰은 [Boot]/PlayerSpawner (M0-2 6장)
+            manager.NetworkConfig.PlayerPrefab = null;
             var lists = manager.NetworkConfig.Prefabs.NetworkPrefabsLists;
             if (lists.Count != 1 || lists[0] != prefabsList)
             {
@@ -597,6 +621,10 @@ namespace Peak.Editor
             var eventSystemGo = EnsureChild(boot, EventSystemName);
             EnsureComponent<EventSystem>(eventSystemGo);
             EnsureComponent<InputSystemUIInputModule>(eventSystemGo);
+
+            // PlayerSpawner: [Boot] in-scene NetworkObject 의 자식 NetworkBehaviour (호스트 전용 로직)
+            var spawner = EnsureComponent<PlayerSpawner>(EnsureChild(boot, PlayerSpawnerName));
+            SetRef(spawner, "playerPrefab", playerPrefab);
         }
 
         // ── Lobby ────────────────────────────────────────────────────────
@@ -726,7 +754,10 @@ namespace Peak.Editor
 
         // ── Game / Sandbox ───────────────────────────────────────────────
 
-        /// <summary>임시 지면 + SpawnPoint + Directional Light + Bootstrapper (+ 임시 Main Camera — M0-2 가 플레이어 카메라 리그로 대체).</summary>
+        /// <summary>
+        /// 임시 지면 + SpawnPoint + Directional Light + Bootstrapper. 카메라는 플레이어 CameraRig 프리팹(오너 스폰 시 생성)이 맡으므로
+        /// M0-1 의 임시 Main Camera 를 지운다 (M0-2 7장). EnsureRoot 는 삭제를 하지 않으므로 명시적으로.
+        /// </summary>
         private static void BuildGame(Scene scene, float groundMeters)
         {
             var ground = EnsurePrimitive(scene, GroundName, PrimitiveType.Plane);
@@ -737,16 +768,55 @@ namespace Peak.Editor
             EnsureSpawnPoint(scene);
             EnsureDirectionalLight(scene);
             EnsureBootstrapper(scene);
+            DeleteRoot(scene, MainCameraName);
+        }
+
+        /// <summary>Game 과 같은 구성 + 임시 경사 30°·60° (경사 정지·미끄러짐 확인용, M1 벽 세트가 대체).</summary>
+        private static void BuildSandboxClimb(Scene scene)
+        {
+            BuildGame(scene, SandboxGroundMeters);
+            EnsureRamp(scene, Ramp30Name, Ramp30Angle, Ramp30X);
+            EnsureRamp(scene, Ramp60Name, Ramp60Angle, Ramp60X);
+        }
+
+        /// <summary>
+        /// 플레이어 없이 호스트·오버레이·기존 카메라만. 스폰 방식은 M2 가 생성 결과로 정하므로 SpawnPoint 를 지운다 (M0-2 7장)
+        /// → PlayerSpawner 는 SpawnPoint 가 없어 스폰하지 않는다.
+        /// </summary>
+        private static void BuildSandboxProcGen(Scene scene)
+        {
+            DeleteRoot(scene, SpawnPointName);
+            EnsureBootstrapper(scene);
             var theme = AssetDatabase.LoadAssetAtPath<VisualTheme>(ThemeAssetPath);
             EnsureCamera(scene, CameraPosition, CameraEuler, theme != null ? theme.uiBackground : Color.black);
         }
 
-        private static void BuildSandboxProcGen(Scene scene)
+        /// <summary>
+        /// 경사면 큐브. X 축으로 기울여 +Z 로 올라가게 하고, 윗면의 낮은 모서리가 지면(y 0)·<see cref="RampStartZ"/> 에 오게 둔다 → 지면에서 턱 없이 걸어 올라탄다.
+        /// </summary>
+        private static void EnsureRamp(Scene scene, string name, float angleDegrees, float x)
         {
-            EnsureSpawnPoint(scene);
-            EnsureBootstrapper(scene);
-            var theme = AssetDatabase.LoadAssetAtPath<VisualTheme>(ThemeAssetPath);
-            EnsureCamera(scene, CameraPosition, CameraEuler, theme != null ? theme.uiBackground : Color.black);
+            var ramp = EnsurePrimitive(scene, name, PrimitiveType.Cube);
+            float radians = angleDegrees * Mathf.Deg2Rad;
+            float halfLength = RampSize.z * 0.5f;
+            float halfThickness = RampSize.y * 0.5f;
+            float y = halfLength * Mathf.Sin(radians) - halfThickness * Mathf.Cos(radians);
+            float z = RampStartZ + halfLength * Mathf.Cos(radians) + halfThickness * Mathf.Sin(radians);
+            SetTransform(ramp, new Vector3(x, y, z), new Vector3(-angleDegrees, 0f, 0f), RampSize);
+            ramp.layer = LayerMask.NameToLayer(Layers.Terrain);
+        }
+
+        /// <summary>같은 이름의 루트 오브젝트를 모두 지운다 (Ensure* 는 삭제를 하지 않는다).</summary>
+        private static void DeleteRoot(Scene scene, string name)
+        {
+            foreach (var root in scene.GetRootGameObjects())
+            {
+                if (root.name == name)
+                {
+                    Object.DestroyImmediate(root);
+                    Log.Info(LogCategory.Core, $"{scene.name}: 루트 {name} 삭제");
+                }
+            }
         }
 
         // ── Build Settings ───────────────────────────────────────────────

@@ -1,6 +1,7 @@
 using Peak.Core;
 using Unity.Netcode;
 using Unity.Netcode.Transports.UTP;
+using UnityEngine.SceneManagement;
 
 namespace Peak.Network
 {
@@ -46,6 +47,10 @@ namespace Peak.Network
             ConfigureLocalTransport(manager);
             bool ok = manager.StartHost();
             Log.Info(LogCategory.Net, ok ? $"호스트 시작 ({LocalAddress}:{LocalPort}, clientId={manager.LocalClientId})" : "호스트 시작 실패");
+            if (ok)
+            {
+                ConfigureClientSynchronization(manager);
+            }
             return ok;
         }
 
@@ -75,6 +80,20 @@ namespace Peak.Network
             {
                 Manager.Shutdown();
                 Log.Info(LogCategory.Net, "네트워크 종료");
+            }
+        }
+
+        /// <summary>
+        /// 접속 클라이언트의 초기 씬 동기화를 Additive 로 (서버가 정하는 값, 클라이언트는 따라감).
+        /// 기본값 Single 이면 클라이언트는 서버의 활성 씬만 "이미 로드됨"으로 인정하고 나머지(Boot)를 다시 로드한다 →
+        /// Bootstrapper 가 Boot 를 이미 얹은 클라이언트에서 Boot 가 중복 로드된다 (M0-2 8장 조사, NGO DefaultSceneManagerHandler.ClientShouldPassThrough).
+        /// Additive 는 클라이언트에 이미 로드된 같은 씬을 재사용한다. 우리 씬 구조(Boot + 애디티브 콘텐츠 씬, 201 2장)와도 맞다.
+        /// </summary>
+        private static void ConfigureClientSynchronization(NetworkManager manager)
+        {
+            if (manager.NetworkConfig.EnableSceneManagement && manager.SceneManager != null)
+            {
+                manager.SceneManager.SetClientSynchronizationMode(LoadSceneMode.Additive);
             }
         }
 

@@ -30,3 +30,12 @@ MonoBehaviour:
   unconsciousToDeath: 60
   carrySpeedMultiplier: 0.7
   interactRange: 2.5
+  airControl: 0.3
+  groundAccelTime: 0.1
+  turnSpeed: 10
+  lookSensitivity: 0.15
+  pitchMin: -40
+  pitchMax: 70
+  groundCheckRadius: 0.3
+  groundCheckDistance: 0.15
+  spawnSpacing: 1.5
