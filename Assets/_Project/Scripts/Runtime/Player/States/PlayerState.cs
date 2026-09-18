@@ -13,6 +13,12 @@ namespace Peak.Player.States
             Controller = controller;
         }
 
+        /// <summary>
+        /// true 면 오너 FixedUpdate 가 몸 yaw 를 카메라 yaw 로 맞춘다 (1인칭, Docs/202_gameplay.md 12.1).
+        /// M1 의 Climbing·Hanging·Mantling 은 false 로 재정의 — 몸이 벽을 향한다 (202 12.1).
+        /// </summary>
+        public virtual bool BodyFollowsCameraYaw => true;
+
         public virtual void Enter()
         {
         }

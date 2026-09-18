@@ -40,8 +40,6 @@ namespace Peak.Player.States
 
             normalSpeed = Mathf.Min(normalSpeed, 0f) + Vector3.Dot(Physics.gravity, normal) * deltaTime;
             body.linearVelocity = tangent + normal * normalSpeed;
-
-            Controller.FaceDirection(wish, deltaTime);
         }
     }
 }

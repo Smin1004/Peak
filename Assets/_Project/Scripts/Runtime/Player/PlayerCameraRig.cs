@@ -6,10 +6,12 @@ using UnityEngine;
 namespace Peak.Player
 {
     /// <summary>
-    /// 3인칭 카메라 (Docs/202_gameplay.md 2장, Docs/301_decisions.md D14). **오너 전용** — <see cref="PlayerController"/> 가 오너 스폰 때
+    /// 1인칭 카메라 (Docs/202_gameplay.md 12.1, Docs/301_decisions.md D16). **오너 전용** — <see cref="PlayerController"/> 가 오너 스폰 때
     /// <see cref="Activate"/>, 디스폰 때 <see cref="Deactivate"/> 를 부른다. 비오너 인스턴스에서는 아무것도 하지 않는다.
-    /// CameraRig 프리팹(Camera + CinemachineBrain + CinemachineCamera[Third Person Follow, Deoccluder])을 인스턴스화하고 Follow/LookAt = CameraTarget.
+    /// CameraRig 프리팹(Camera + CinemachineBrain + CinemachineCamera[Hard Lock To Target, Rotate With Follow Target])을 인스턴스화하고
+    /// Follow = CameraTarget(눈높이), LookAt 없음 — 카메라 위치·회전이 CameraTarget 과 같다. FOV 는 GameTuning.fieldOfView 를 런타임에 넣는다.
     /// Look 입력은 여기서만 읽어 CameraTarget 의 yaw(무제한)·pitch(제한)를 돌린다 — CinemachineInputAxisController 를 쓰지 않는다 (입력 이중 처리 방지).
+    /// 몸 회전은 <see cref="PlayerController"/> 가 FixedUpdate 에서 <see cref="YawRotation"/> 을 따라간다.
     /// 커서: 플레이 중 잠금·숨김. Pause → 해제(해제 중 Look 무시), UI/Click → 재잠금.
     /// </summary>
     [DefaultExecutionOrder(PlayerCameraRig.ExecutionOrder)]
@@ -18,10 +20,13 @@ namespace Peak.Player
         /// <summary>CinemachineBrain(기본 순서 0)의 LateUpdate 보다 먼저 CameraTarget 회전을 확정한다.</summary>
         internal const int ExecutionOrder = -100;
 
+        /// <summary>yaw 정규화 범위 (도).</summary>
+        private const float FullTurnDegrees = 360f;
+
         [Tooltip("Prefabs/CameraRig.prefab (Peak > Setup > Rebuild Player Prefab 이 연결)")]
         [SerializeField] private GameObject rigPrefab;
 
-        [Tooltip("플레이어 자식 CameraTarget. 카메라가 따라가고 바라보는 점")]
+        [Tooltip("플레이어 자식 CameraTarget (눈높이). 1인칭 카메라의 위치·회전")]
         [SerializeField] private Transform cameraTarget;
 
         private GameObject _rig;
@@ -69,10 +74,38 @@ namespace Peak.Player
             }
             else
             {
+                // Rotate With Follow Target 이 Follow 의 회전을 쓰므로 LookAt 은 비운다
                 virtualCamera.Follow = cameraTarget;
-                virtualCamera.LookAt = cameraTarget;
+                virtualCamera.LookAt = null;
+                var tuning = GameConfig.Tuning;
+                if (tuning != null)
+                {
+                    var lens = virtualCamera.Lens;
+                    lens.FieldOfView = tuning.fieldOfView;
+                    virtualCamera.Lens = lens;
+                }
             }
             SetCursorLocked(true);
+        }
+
+        /// <summary>
+        /// 시선을 즉시 지정한다 — 스폰 방향 지정·디버그 순간이동용 (Docs/202_gameplay.md 12.1 API).
+        /// yaw 는 0..360 으로 정규화, pitch 는 GameTuning.pitchMin..pitchMax 로 제한. 몸은 다음 FixedUpdate 에 yaw 를 따라간다.
+        /// </summary>
+        public void SetLook(float yaw, float pitch)
+        {
+            var tuning = GameConfig.Tuning;
+            if (tuning == null)
+            {
+                Log.Error(LogCategory.Player, "PlayerCameraRig.SetLook: GameTuning 이 바인딩되지 않았다 (Boot 미로드)");
+                return;
+            }
+            _yaw = Mathf.Repeat(yaw, FullTurnDegrees);
+            _pitch = Mathf.Clamp(pitch, tuning.pitchMin, tuning.pitchMax);
+            if (_rig != null)
+            {
+                ApplyTargetRotation();
+            }
         }
 
         public void Deactivate()
@@ -120,7 +153,7 @@ namespace Peak.Player
             }
             // 마우스 델타는 이미 프레임당 픽셀이므로 deltaTime 을 곱하지 않는다
             Vector2 look = _actions.Player.Look.ReadValue<Vector2>() * tuning.lookSensitivity;
-            _yaw = Mathf.Repeat(_yaw + look.x, 360f);
+            _yaw = Mathf.Repeat(_yaw + look.x, FullTurnDegrees);
             _pitch = Mathf.Clamp(_pitch - look.y, tuning.pitchMin, tuning.pitchMax);
         }
 

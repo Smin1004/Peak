@@ -34,5 +34,9 @@ namespace Peak.Visual
         public Color uiBackground = new Color(0.09f, 0.10f, 0.12f);
         public Color uiText = new Color(0.92f, 0.92f, 0.92f);
         public Color uiAccent = new Color(0.98f, 0.76f, 0.20f);
+
+        [Header("HUD (204 2.2)")]
+        [Tooltip("화면 중앙 조준점 색 (반투명 흰색). HudRoot.ApplyTheme 이 적용 — M0-3 추가")]
+        public Color crosshairColor = new Color(1f, 1f, 1f, 0.75f);
     }
 }

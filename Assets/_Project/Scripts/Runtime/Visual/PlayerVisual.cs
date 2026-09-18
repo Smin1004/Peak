@@ -1,10 +1,12 @@
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace Peak.Visual
 {
     /// <summary>
     /// 플레이어 프리팹 <c>Visual</c> 오브젝트에 붙는 <see cref="IVisualState"/> 구현 (Docs/102_required_assets.md 2·3장).
     /// 자기 자식 Renderer(캡슐·코)에 MaterialPropertyBlock 으로 색을 넣는다. 머티리얼 에셋은 건드리지 않는다 (102 2장 3번).
+    /// 1인칭 오너 화면에서는 Renderer 를 그림자 전용으로 바꾼다 (Docs/202_gameplay.md 12.2).
     /// 모델로 교체할 때는 이 컴포넌트만 바꾸면 된다 — 로직은 인터페이스만 본다.
     /// </summary>
     public sealed class PlayerVisual : MonoBehaviour, IVisualState
@@ -26,6 +28,15 @@ namespace Peak.Visual
                 _block.SetColor(BaseColorId, color);
                 _block.SetColor(ColorId, color);
                 renderer.SetPropertyBlock(_block);
+            }
+        }
+
+        public void SetLocalView(bool isLocalView)
+        {
+            var mode = isLocalView ? ShadowCastingMode.ShadowsOnly : ShadowCastingMode.On;
+            foreach (var renderer in GetComponentsInChildren<Renderer>(true))
+            {
+                renderer.shadowCastingMode = mode;
             }
         }
     }

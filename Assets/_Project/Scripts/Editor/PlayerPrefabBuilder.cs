@@ -3,19 +3,22 @@ using System.IO;
 using System.Reflection;
 using Peak.Core;
 using Peak.Player;
+using Peak.UI;
 using Peak.Visual;
 using Unity.Cinemachine;
 using Unity.Netcode;
 using Unity.Netcode.Components;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.UI;
 using Object = UnityEngine.Object;
 
 namespace Peak.Editor
 {
     /// <summary>
-    /// Peak > Setup > Rebuild Player Prefab — Player.prefab · CameraRig.prefab · 마찰 0 PhysicsMaterial 을 코드로 (재)생성하고
-    /// NetworkPrefabs.asset 에 Player 를 등록한다 (Docs/Prompts/M0-2_player.md 1·4장).
+    /// Peak > Setup > Rebuild Player Prefab — HudRoot.prefab · CameraRig.prefab · Player.prefab · 마찰 0 PhysicsMaterial 을 코드로 (재)생성하고
+    /// NetworkPrefabs.asset 에 Player 를 등록한다 (Docs/Prompts/M0-2_player.md 1·4장, M0-3_first_person.md 1·2·7장).
+    /// 카메라는 1인칭 (Docs/202_gameplay.md 12.1, Docs/301_decisions.md D16).
     /// 멱등: 있는 프리팹은 LoadPrefabContents 로 열어 같은 이름의 자식·컴포넌트를 찾아 값만 다시 맞춘다 (fileID 유지 → 두 번 실행해도 diff 없음).
     /// 실행 순서: 이 메뉴 → Peak > Setup > Rebuild M0 Scenes (씬 빌더가 Player 프리팹을 PlayerSpawner 에 연결한다).
     /// </summary>
@@ -28,6 +31,8 @@ namespace Peak.Editor
         private const string ArtDir = M0SceneBuilder.ProjectRoot + "/Art";
         internal const string PlayerPrefabPath = PrefabsDir + "/Player.prefab";
         internal const string CameraRigPrefabPath = PrefabsDir + "/CameraRig.prefab";
+        private const string UiPrefabsDir = PrefabsDir + "/UI";
+        internal const string HudPrefabPath = UiPrefabsDir + "/HudRoot.prefab";
         private const string ZeroFrictionMaterialPath = ArtDir + "/PlayerZeroFriction.physicMaterial";
 
         // ── 오브젝트 이름 ──────────────────────────────────────────────────
@@ -38,6 +43,7 @@ namespace Peak.Editor
         private const string RigCameraName = "Camera";
         private const string RigVirtualCameraName = "CinemachineCamera";
         private const string MainCameraTag = "MainCamera";
+        private const string CrosshairName = "Crosshair";
 
         // ── 플레이어 기하 (202 2장: 캡슐 1.8 × 0.35, 102 2장 4번: 모든 스케일의 기준) ──
         private const float CapsuleHeight = 1.8f;
@@ -45,8 +51,8 @@ namespace Peak.Editor
         /// <summary>CapsuleCollider.direction: 0 = X, 1 = Y, 2 = Z.</summary>
         private const int CapsuleDirectionY = 1;
         private const float PlayerMass = 70f;
-        /// <summary>카메라가 따라가는 점 높이 (머리 근처).</summary>
-        private const float CameraTargetHeight = 1.5f;
+        /// <summary>1인칭 눈높이 = CameraTarget 로컬 y (202 12.1). 캡슐 1.8 m 의 머리 안쪽.</summary>
+        private const float EyeHeight = 1.6f;
         /// <summary>Unity Capsule 프리미티브 메시: 높이 2 m, 반지름 0.5 m.</summary>
         private const float PrimitiveCapsuleHeight = 2f;
         private const float PrimitiveCapsuleRadius = 0.5f;
@@ -54,18 +60,24 @@ namespace Peak.Editor
         private static readonly Vector3 NoseSize = new Vector3(0.12f, 0.08f, 0.2f);
         private const float NoseHeight = 1.5f;
 
-        // ── 카메라 리그 (202 2장: Third Person Follow, 거리 4 m, 짧은 댐핑 / D14: Deoccluder) ──
-        private static readonly Vector3 ShoulderOffset = new Vector3(0.5f, 0.2f, 0f);
-        private const float VerticalArmLength = 0.4f;
-        /// <summary>1 = 오른쪽 어깨.</summary>
-        private const float CameraSide = 1f;
-        private const float CameraDistance = 4f;
-        private static readonly Vector3 FollowDamping = new Vector3(0.1f, 0.1f, 0.1f);
-        private const float DeoccluderMinimumDistanceFromTarget = 0.3f;
-        private const float DeoccluderCameraRadius = 0.2f;
-        private const int DeoccluderMaximumEffort = 4;
-        private const float DeoccluderDamping = 0.2f;
-        private const float DeoccluderDampingWhenOccluded = 0f;
+        // ── 카메라 리그 (202 12.1: 1인칭 — Hard Lock To Target + Rotate With Follow Target, 댐핑 0) ──
+        /// <summary>1인칭 카메라 댐핑 없음 (위치·회전 모두 CameraTarget 과 같은 프레임에).</summary>
+        private const float FirstPersonDamping = 0f;
+        /// <summary>벽 밀착 시 잘림 방지 — 부착 거리 0.45 m 와 캡슐 반지름 0.35 m 사이 여유가 작다 (202 12.1).</summary>
+        private const float FirstPersonNearClip = 0.05f;
+        private const float FirstPersonFarClip = 1000f;
+
+        // ── HUD (204 2.2·3장) ────────────────────────────────────────────
+        /// <summary>게임 HUD Canvas 순서. 디버그 오버레이(100)보다 아래.</summary>
+        private const int HudSortOrder = 10;
+        /// <summary>204 3장: Scale With Screen Size 1920×1080, match 0.5 (M0SceneBuilder 의 Lobby·오버레이 Canvas 와 같은 값).</summary>
+        private static readonly Vector2 HudReferenceResolution = new Vector2(1920f, 1080f);
+        private const float HudMatchWidthOrHeight = 0.5f;
+        /// <summary>조준점 한 변 px (기준 해상도 1920×1080).</summary>
+        private const float CrosshairSize = 6f;
+        /// <summary>Unity 내장 UI 원형 스프라이트 (DefaultControls 와 같은 경로).</summary>
+        private const string CrosshairSpritePath = "UI/Skin/Knob.psd";
+        private static readonly Vector2 ScreenCenter = new Vector2(0.5f, 0.5f);
 
         [MenuItem(MenuPath)]
         public static void Rebuild()
@@ -77,16 +89,19 @@ namespace Peak.Editor
             }
 
             M0SceneBuilder.EnsureFolder(PrefabsDir);
+            M0SceneBuilder.EnsureFolder(UiPrefabsDir);
             M0SceneBuilder.EnsureFolder(ArtDir);
             EnsureZeroFrictionMaterial();
 
             // 참조 에셋은 각 populate 안에서 다시 로드한다 (프리팹 저장·임포트 후 로컬 참조가 fake-null 이 되는 것 방지, M0SceneBuilder 와 같은 방식)
+            // Player 가 HudRoot·CameraRig 를 참조하므로 그 둘을 먼저
+            BuildPrefab(HudPrefabPath, PopulateHud);
             BuildPrefab(CameraRigPrefabPath, PopulateCameraRig);
             BuildPrefab(PlayerPrefabPath, PopulatePlayer);
             RegisterPlayerNetworkPrefab();
 
             AssetDatabase.SaveAssets();
-            Log.Info(LogCategory.Player, $"Rebuild Player Prefab 완료: {PlayerPrefabPath}, {CameraRigPrefabPath}, {ZeroFrictionMaterialPath}. 다음: Peak > Setup > Rebuild M0 Scenes");
+            Log.Info(LogCategory.Player, $"Rebuild Player Prefab 완료: {PlayerPrefabPath}, {CameraRigPrefabPath}, {HudPrefabPath}, {ZeroFrictionMaterialPath}. 다음: Peak > Setup > Rebuild M0 Scenes");
         }
 
         // ── 에셋 ─────────────────────────────────────────────────────────
@@ -176,6 +191,7 @@ namespace Peak.Editor
         {
             var friction = M0SceneBuilder.LoadRequired<PhysicsMaterial>(ZeroFrictionMaterialPath);
             var rigPrefab = M0SceneBuilder.LoadRequired<GameObject>(CameraRigPrefabPath);
+            var hudPrefab = M0SceneBuilder.LoadRequired<GameObject>(HudPrefabPath);
             int playerLayer = LayerMask.NameToLayer(Layers.Player);
             if (playerLayer < 0)
             {
@@ -212,10 +228,13 @@ namespace Peak.Editor
 
             var cameraRig = M0SceneBuilder.EnsureComponent<PlayerCameraRig>(root);
             M0SceneBuilder.EnsureComponent<PlayerController>(root);
+            // 204 3장: HUD 는 오너 로컬 플레이어만 생성 (PlayerController 가 Activate)
+            var localHud = M0SceneBuilder.EnsureComponent<PlayerLocalHud>(root);
+            M0SceneBuilder.SetRef(localHud, "hudPrefab", hudPrefab);
 
             var cameraTarget = M0SceneBuilder.EnsureChild(root, CameraTargetName);
             cameraTarget.layer = playerLayer;
-            M0SceneBuilder.SetTransform(cameraTarget, new Vector3(0f, CameraTargetHeight, 0f), Vector3.zero, Vector3.one);
+            M0SceneBuilder.SetTransform(cameraTarget, new Vector3(0f, EyeHeight, 0f), Vector3.zero, Vector3.one);
 
             M0SceneBuilder.SetRef(cameraRig, "rigPrefab", rigPrefab);
             M0SceneBuilder.SetRef(cameraRig, "cameraTarget", cameraTarget.transform);
@@ -274,43 +293,86 @@ namespace Peak.Editor
             {
                 camera.backgroundColor = theme.uiBackground;
             }
-            M0SceneBuilder.EnsureComponent<CinemachineBrain>(cameraGo);
+            // Rigidbody 보간 위치(Update 시점)를 프레임마다 따라가도록 카메라·블렌드 모두 LateUpdate (202 12.1)
+            var brain = M0SceneBuilder.EnsureComponent<CinemachineBrain>(cameraGo);
+            brain.UpdateMethod = CinemachineBrain.UpdateMethods.LateUpdate;
+            brain.BlendUpdateMethod = CinemachineBrain.BrainUpdateMethods.LateUpdate;
+            EditorUtility.SetDirty(brain);
 
             var virtualCameraGo = M0SceneBuilder.EnsureChild(root, RigVirtualCameraName);
-            M0SceneBuilder.EnsureComponent<CinemachineCamera>(virtualCameraGo);
+            var virtualCamera = M0SceneBuilder.EnsureComponent<CinemachineCamera>(virtualCameraGo);
+            // FOV 는 굽지 않는다 — PlayerCameraRig.Activate 가 GameTuning.fieldOfView 를 넣는다
+            var lens = virtualCamera.Lens;
+            lens.NearClipPlane = FirstPersonNearClip;
+            lens.FarClipPlane = FirstPersonFarClip;
+            virtualCamera.Lens = lens;
+            EditorUtility.SetDirty(virtualCamera);
 
-            var follow = M0SceneBuilder.EnsureComponent<CinemachineThirdPersonFollow>(virtualCameraGo);
-            follow.ShoulderOffset = ShoulderOffset;
-            follow.VerticalArmLength = VerticalArmLength;
-            follow.CameraSide = CameraSide;
-            follow.CameraDistance = CameraDistance;
-            follow.Damping = FollowDamping;
-            // 지형 관통 방지는 Deoccluder 하나만 (D14). 내장 장애물 회피를 같이 켜면 두 보정이 겹쳐 떨린다
-            var builtInAvoidance = follow.AvoidObstacles;
-            builtInAvoidance.Enabled = false;
-            follow.AvoidObstacles = builtInAvoidance;
-            EditorUtility.SetDirty(follow);
+            // 3인칭 컴포넌트 제거 (D16: 1인칭에서는 관통할 거리가 없다). EnsureComponent 는 지우지 않으므로 명시적으로 — 없으면 무시 (멱등)
+            RemoveComponent<CinemachineThirdPersonFollow>(virtualCameraGo);
+            RemoveComponent<CinemachineDeoccluder>(virtualCameraGo);
 
-            var deoccluder = M0SceneBuilder.EnsureComponent<CinemachineDeoccluder>(virtualCameraGo);
-            deoccluder.CollideAgainst = LayerMask.GetMask(Layers.Terrain);
-            deoccluder.IgnoreTag = string.Empty;
-            deoccluder.TransparentLayers = 0;
-            deoccluder.MinimumDistanceFromTarget = DeoccluderMinimumDistanceFromTarget;
-            var avoid = deoccluder.AvoidObstacles;
-            avoid.Enabled = true;
-            avoid.DistanceLimit = 0f;
-            avoid.MinimumOcclusionTime = 0f;
-            avoid.CameraRadius = DeoccluderCameraRadius;
-            avoid.Strategy = CinemachineDeoccluder.ObstacleAvoidance.ResolutionStrategy.PullCameraForward;
-            avoid.MaximumEffort = DeoccluderMaximumEffort;
-            avoid.SmoothingTime = 0f;
-            avoid.Damping = DeoccluderDamping;
-            avoid.DampingWhenOccluded = DeoccluderDampingWhenOccluded;
-            deoccluder.AvoidObstacles = avoid;
-            var quality = deoccluder.ShotQualityEvaluation;
-            quality.Enabled = false;
-            deoccluder.ShotQualityEvaluation = quality;
-            EditorUtility.SetDirty(deoccluder);
+            // 위치 = CameraTarget (눈높이), 회전 = CameraTarget 회전 (PlayerCameraRig 가 LateUpdate 에서 Brain 보다 먼저 확정)
+            var hardLock = M0SceneBuilder.EnsureComponent<CinemachineHardLockToTarget>(virtualCameraGo);
+            hardLock.Damping = FirstPersonDamping;
+            EditorUtility.SetDirty(hardLock);
+
+            var rotateWithTarget = M0SceneBuilder.EnsureComponent<CinemachineRotateWithFollowTarget>(virtualCameraGo);
+            rotateWithTarget.Damping = FirstPersonDamping;
+            EditorUtility.SetDirty(rotateWithTarget);
+        }
+
+        private static void RemoveComponent<T>(GameObject go) where T : Component
+        {
+            var component = go.GetComponent<T>();
+            if (component != null)
+            {
+                Object.DestroyImmediate(component, true);
+            }
+        }
+
+        // ── HudRoot (204 2.2·3장) ────────────────────────────────────────
+
+        /// <summary>
+        /// 게임 HUD 단일 Canvas. 오너 스폰 때 PlayerLocalHud 가 인스턴스화한다. 입력을 받는 요소가 없으므로 GraphicRaycaster 없음.
+        /// 색은 굽지 않는다 — HudRoot.ApplyTheme 이 VisualTheme 에서 넣는다.
+        /// </summary>
+        private static void PopulateHud(GameObject root)
+        {
+            var canvas = M0SceneBuilder.EnsureComponent<Canvas>(root);
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.sortingOrder = HudSortOrder;
+
+            var scaler = M0SceneBuilder.EnsureComponent<CanvasScaler>(root);
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = HudReferenceResolution;
+            scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+            scaler.matchWidthOrHeight = HudMatchWidthOrHeight;
+            RemoveComponent<GraphicRaycaster>(root);
+
+            var hud = M0SceneBuilder.EnsureComponent<HudRoot>(root);
+
+            var crosshairGo = M0SceneBuilder.EnsureChild(root, CrosshairName);
+            var crosshair = M0SceneBuilder.EnsureComponent<Image>(crosshairGo);
+            crosshair.sprite = AssetDatabase.GetBuiltinExtraResource<Sprite>(CrosshairSpritePath);
+            crosshair.type = Image.Type.Simple;
+            crosshair.raycastTarget = false;
+            if (crosshair.sprite == null)
+            {
+                Log.Error(LogCategory.UI, $"내장 스프라이트를 찾지 못했다: {CrosshairSpritePath}");
+            }
+
+            var rect = crosshair.rectTransform;
+            rect.anchorMin = ScreenCenter;
+            rect.anchorMax = ScreenCenter;
+            rect.pivot = ScreenCenter;
+            rect.anchoredPosition = Vector2.zero;
+            rect.sizeDelta = new Vector2(CrosshairSize, CrosshairSize);
+            rect.localRotation = Quaternion.identity;
+            rect.localScale = Vector3.one;
+            EditorUtility.SetDirty(crosshair);
+
+            M0SceneBuilder.SetRef(hud, "crosshair", crosshair);
         }
 
         // ── NetworkPrefabs ───────────────────────────────────────────────

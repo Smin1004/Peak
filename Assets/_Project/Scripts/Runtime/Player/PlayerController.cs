@@ -10,11 +10,13 @@ namespace Peak.Player
 {
     /// <summary>
     /// 플레이어 루트 로직 (Docs/202_gameplay.md 2·3장). 이동 상태 기계를 들고 **전이를 여기 한 곳에서** 결정한다.
-    /// 권한 (Docs/205_network.md 3장): 입력·물리 제어·카메라·오버레이는 오너 인스턴스만. 비오너는 NetworkTransform(오너 권한)이 움직이고
+    /// 권한 (Docs/205_network.md 3장): 입력·물리 제어·카메라·HUD·오버레이는 오너 인스턴스만. 비오너는 NetworkTransform(오너 권한)이 움직이고
     /// NetworkRigidbody 가 Rigidbody 를 kinematic 으로 둔다. 색은 모든 인스턴스가 각자 계산한다.
     /// 비주얼은 <see cref="IVisualState"/> 로만 통지한다 (Docs/102_required_assets.md 2장).
+    /// 1인칭 (Docs/202_gameplay.md 12장, Docs/301_decisions.md D16): 몸 yaw 는 카메라 yaw 를 따르고, 오너 화면에서 자기 몸은 그림자만 보인다.
     /// </summary>
     [RequireComponent(typeof(Rigidbody), typeof(CapsuleCollider), typeof(PlayerCameraRig))]
+    [RequireComponent(typeof(PlayerLocalHud))]
     public sealed class PlayerController : NetworkBehaviour
     {
         /// <summary>방향 벡터를 "입력 없음"으로 보는 제곱 크기 (부동소수점 잡음 컷).</summary>
@@ -28,6 +30,7 @@ namespace Peak.Player
         private Rigidbody _body;
         private CapsuleCollider _capsule;
         private PlayerCameraRig _cameraRig;
+        private PlayerLocalHud _localHud;
         private PeakActions _actions;
         private PlayerState[] _states;
         private int _terrainMask;
@@ -56,6 +59,7 @@ namespace Peak.Player
             _body = GetComponent<Rigidbody>();
             _capsule = GetComponent<CapsuleCollider>();
             _cameraRig = GetComponent<PlayerCameraRig>();
+            _localHud = GetComponent<PlayerLocalHud>();
             _states = new PlayerState[]
             {
                 new GroundedState(this),
@@ -76,7 +80,7 @@ namespace Peak.Player
             // Rigidbody 포즈가 원점에 남으면 첫 물리 스텝까지 원점 캡슐이 되어 다른 플레이어를 밀어낸다 → 스폰 Transform 으로 맞춘다
             _body.position = transform.position;
             _body.rotation = transform.rotation;
-            ApplyTint();
+            ApplyVisual();
 
             if (!IsOwner)
             {
@@ -93,6 +97,7 @@ namespace Peak.Player
             _actions.Player.Enable();
             _actions.UI.Enable();
             _cameraRig.Activate(_actions);
+            _localHud.Activate();
 
             Ground = ProbeGround();
             State = Ground.IsWalkable ? PlayerMoveState.Grounded : PlayerMoveState.Airborne;
@@ -124,6 +129,7 @@ namespace Peak.Player
             _isLocalActive = false;
             DebugOverlay.Unregister(OverlayKey);
             CurrentState.Exit();
+            _localHud.Deactivate();
             _cameraRig.Deactivate();
             _actions.Dispose();
             _actions = null;
@@ -158,6 +164,12 @@ namespace Peak.Player
             Ground = ProbeGround();
             UpdateTransitions();
             CurrentState.FixedTick(Time.fixedDeltaTime);
+
+            // 1인칭: 몸 yaw = 카메라 yaw (202 12.1). 비오너는 NetworkTransform 으로 이 회전을 본다
+            if (CurrentState.BodyFollowsCameraYaw)
+            {
+                _body.MoveRotation(_cameraRig.YawRotation);
+            }
         }
 
         // ── 전이 (202 3장 — 전부 여기서) ─────────────────────────────────
@@ -253,23 +265,23 @@ namespace Peak.Player
             return Vector3.MoveTowards(current, target, rate * deltaTime);
         }
 
-        /// <summary>수평 방향으로 turnSpeed(rad/s) 까지 회전. 방향이 없으면 유지.</summary>
-        internal void FaceDirection(Vector3 direction, float deltaTime)
-        {
-            direction.y = 0f;
-            if (direction.sqrMagnitude <= MinDirectionSqrMagnitude)
-            {
-                return;
-            }
-            var target = Quaternion.LookRotation(direction, Vector3.up);
-            float maxDegrees = Tuning.turnSpeed * Mathf.Rad2Deg * deltaTime;
-            _body.MoveRotation(Quaternion.RotateTowards(_body.rotation, target, maxDegrees));
-        }
-
         // ── 비주얼·오버레이 ─────────────────────────────────────────────
 
+        /// <summary>모든 인스턴스: 1인칭 자기 몸 숨김(오너만 그림자 전용, 202 12.2) + 색.</summary>
+        private void ApplyVisual()
+        {
+            var visual = GetComponentInChildren<IVisualState>();
+            if (visual == null)
+            {
+                Log.Warn(LogCategory.Player, "PlayerController: Visual 자식에 IVisualState 가 없다");
+                return;
+            }
+            visual.SetLocalView(IsOwner);
+            ApplyTint(visual);
+        }
+
         /// <summary>플레이어 색 = playerColors[OwnerClientId % PlayerCount] (102 3장). 오너·비오너 모두 각자 계산.</summary>
-        private void ApplyTint()
+        private void ApplyTint(IVisualState visual)
         {
             var theme = GameConfig.Theme;
             if (theme == null)
@@ -283,12 +295,6 @@ namespace Peak.Player
                 Log.Error(LogCategory.Player, $"VisualTheme.playerColors 길이가 {VisualTheme.PlayerCount} 보다 짧다");
                 return;
             }
-            var visual = GetComponentInChildren<IVisualState>();
-            if (visual == null)
-            {
-                Log.Warn(LogCategory.Player, "PlayerController: Visual 자식에 IVisualState 가 없다");
-                return;
-            }
             visual.SetTint(theme.playerColors[index]);
         }
 
@@ -297,7 +303,7 @@ namespace Peak.Player
             Vector3 velocity = _body.linearVelocity;
             float horizontalSpeed = new Vector2(velocity.x, velocity.z).magnitude;
             string slope = Ground.HasHit ? Ground.SlopeAngle.ToString("0") : "-";
-            return $"Player {State} | {horizontalSpeed:0.0} m/s | grounded {IsGrounded} | slope {slope}";
+            return $"Player {State} | {horizontalSpeed:0.0} m/s | grounded {IsGrounded} | slope {slope} | look {_cameraRig.Yaw:0} / {_cameraRig.Pitch:0}";
         }
     }
 }

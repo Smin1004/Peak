@@ -51,7 +51,6 @@ namespace Peak.Player.States
             }
 
             body.linearVelocity = velocity + delta;
-            Controller.FaceDirection(wish, deltaTime);
         }
     }
 }
