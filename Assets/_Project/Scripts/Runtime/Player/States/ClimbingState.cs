@@ -55,7 +55,11 @@ namespace Peak.Player.States
             body.MoveRotation(ClimbSensor.FacingRotation(surface.Normal));
             Controller.ClimbSurfaceInternal = surface;
 
-            // M1-3: 소모, 0 → Exhausted 이탈
+            // 소모 (202 5장): 이동 입력이 없어도 매달려 있으면 climbCost × climbIdleCostMultiplier (301 Q11 ⚠).
+            // 바닥나면 컨트롤러가 다음 전이에서 Exhausted 로 떨어뜨린다
+            bool moving = input.sqrMagnitude > PlayerController.MinDirectionSqrMagnitude;
+            float cost = tuning.climbCost * (moving ? 1f : tuning.climbIdleCostMultiplier);
+            Controller.Vitals.Drain(cost * deltaTime);
         }
 
         public override void Exit()

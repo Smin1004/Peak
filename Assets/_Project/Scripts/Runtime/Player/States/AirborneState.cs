@@ -28,7 +28,8 @@ namespace Peak.Player.States
 
             var tuning = Controller.Tuning;
             var body = Controller.Body;
-            float speed = Controller.SprintHeld ? tuning.sprintSpeed : tuning.walkSpeed;
+            // 공중에서는 소모 없음 — 달리기 판정(스태미나 있음)만 목표 속도에 쓴다 (202 5장)
+            float speed = Controller.IsSprinting ? tuning.sprintSpeed : tuning.walkSpeed;
 
             Vector3 velocity = body.linearVelocity;
             var horizontal = new Vector3(velocity.x, 0f, velocity.z);

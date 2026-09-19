@@ -52,3 +52,9 @@ MonoBehaviour:
   ledgeProbeUp: 0.3
   ledgeInset: 0.15
   mantleClearance: 0.05
+  maxStamina: 100
+  statusEffectTotalCap: 200
+  fallMinInjury: 5
+  fallMaxInjury: 100
+  landingStunDuration: 0.3
+  climbIdleCostMultiplier: 1

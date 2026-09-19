@@ -3,6 +3,7 @@ using System.IO;
 using System.Reflection;
 using Peak.Core;
 using Peak.Player;
+using Peak.Stamina;
 using Peak.UI;
 using Peak.Visual;
 using Unity.Cinemachine;
@@ -19,6 +20,7 @@ namespace Peak.Editor
     /// Peak > Setup > Rebuild Player Prefab — HudRoot.prefab · CameraRig.prefab · Player.prefab · 마찰 0 PhysicsMaterial 을 코드로 (재)생성하고
     /// NetworkPrefabs.asset 에 Player 를 등록한다 (Docs/Prompts/M0-2_player.md 1·4장, M0-3_first_person.md 1·2·7장).
     /// 카메라는 1인칭 (Docs/202_gameplay.md 12.1, Docs/301_decisions.md D16).
+    /// M1-3: Data/StatusEffectDef/Hunger·Injury 를 없을 때만 만들고, Player 루트에 PlayerVitals + effectDefs 연결 (Docs/Prompts/M1-3_vitals.md 3장).
     /// 멱등: 있는 프리팹은 LoadPrefabContents 로 열어 같은 이름의 자식·컴포넌트를 찾아 값만 다시 맞춘다 (fileID 유지 → 두 번 실행해도 diff 없음).
     /// 실행 순서: 이 메뉴 → Peak > Setup > Rebuild M0 Scenes (씬 빌더가 Player 프리팹을 PlayerSpawner 에 연결한다).
     /// </summary>
@@ -34,6 +36,22 @@ namespace Peak.Editor
         private const string UiPrefabsDir = PrefabsDir + "/UI";
         internal const string HudPrefabPath = UiPrefabsDir + "/HudRoot.prefab";
         private const string ZeroFrictionMaterialPath = ArtDir + "/PlayerZeroFriction.physicMaterial";
+        private const string StatusEffectDefDir = M0SceneBuilder.ProjectRoot + "/Data/StatusEffectDef";
+        private const string HungerDefPath = StatusEffectDefDir + "/Hunger.asset";
+        private const string InjuryDefPath = StatusEffectDefDir + "/Injury.asset";
+
+        // ── 상태이상 정의 초기값 (100 4.2, 202 6장). 에셋이 없을 때만 쓴다 — 있으면 사람이 튜닝한 값을 건드리지 않는다 ──
+        private const string HungerDisplayName = "허기";
+        private static readonly Color HungerColor = new Color(1f, 0.6f, 0.15f);
+        private const int HungerOrder = 0;
+        private const string InjuryDisplayName = "부상";
+        private static readonly Color InjuryColor = new Color(0.9f, 0.2f, 0.2f);
+        private const int InjuryOrder = 1;
+        /// <summary>종류별 상한 (202 6장).</summary>
+        private const float EffectMaxAmount = 100f;
+        /// <summary>허기·부상은 자연 회복 없음 (100 4.2).</summary>
+        private const float NoDecayDelay = 0f;
+        private const float NoDecayRate = 0f;
 
         // ── 오브젝트 이름 ──────────────────────────────────────────────────
         private const string CameraTargetName = "CameraTarget";
@@ -91,7 +109,10 @@ namespace Peak.Editor
             M0SceneBuilder.EnsureFolder(PrefabsDir);
             M0SceneBuilder.EnsureFolder(UiPrefabsDir);
             M0SceneBuilder.EnsureFolder(ArtDir);
+            M0SceneBuilder.EnsureFolder(StatusEffectDefDir);
             EnsureZeroFrictionMaterial();
+            EnsureStatusEffectDef(HungerDefPath, StatusKind.Hunger, HungerDisplayName, HungerColor, HungerOrder);
+            EnsureStatusEffectDef(InjuryDefPath, StatusKind.Injury, InjuryDisplayName, InjuryColor, InjuryOrder);
 
             // 참조 에셋은 각 populate 안에서 다시 로드한다 (프리팹 저장·임포트 후 로컬 참조가 fake-null 이 되는 것 방지, M0SceneBuilder 와 같은 방식)
             // Player 가 HudRoot·CameraRig 를 참조하므로 그 둘을 먼저
@@ -122,6 +143,52 @@ namespace Peak.Editor
             material.frictionCombine = PhysicsMaterialCombine.Minimum;
             material.bounceCombine = PhysicsMaterialCombine.Minimum;
             EditorUtility.SetDirty(material);
+        }
+
+        /// <summary>상태이상 정의 에셋을 <b>없을 때만</b> 초기값으로 만든다. 있으면 아무것도 바꾸지 않는다 (사람이 튜닝한 값 보호).</summary>
+        private static void EnsureStatusEffectDef(string path, StatusKind kind, string displayName, Color color, int order)
+        {
+            if (AssetDatabase.LoadAssetAtPath<StatusEffectDef>(path) != null)
+            {
+                return;
+            }
+            var def = ScriptableObject.CreateInstance<StatusEffectDef>();
+            def.kind = kind;
+            def.displayName = displayName;
+            def.color = color;
+            def.order = order;
+            def.maxAmount = EffectMaxAmount;
+            def.decayDelay = NoDecayDelay;
+            def.decayRate = NoDecayRate;
+            AssetDatabase.CreateAsset(def, path);
+            Log.Info(LogCategory.Player, $"에셋 생성: {path}");
+        }
+
+        /// <summary>오브젝트 참조 배열 필드를 값이 다를 때만 맞춘다 (멱등).</summary>
+        private static void SetRefArray(Object target, string property, Object[] values)
+        {
+            var so = new SerializedObject(target);
+            var prop = so.FindProperty(property);
+            if (prop == null || !prop.isArray)
+            {
+                Log.Error(LogCategory.Player, $"{target.GetType().Name} 에 배열 필드 {property} 가 없다");
+                return;
+            }
+            bool changed = prop.arraySize != values.Length;
+            prop.arraySize = values.Length;
+            for (int i = 0; i < values.Length; i++)
+            {
+                var element = prop.GetArrayElementAtIndex(i);
+                if (element.objectReferenceValue != values[i])
+                {
+                    element.objectReferenceValue = values[i];
+                    changed = true;
+                }
+            }
+            if (changed)
+            {
+                so.ApplyModifiedPropertiesWithoutUndo();
+            }
         }
 
         /// <summary>
@@ -227,6 +294,13 @@ namespace Peak.Editor
             M0SceneBuilder.EnsureComponent<NetworkRigidbody>(root);
 
             var cameraRig = M0SceneBuilder.EnsureComponent<PlayerCameraRig>(root);
+            // 생체 값 (202 5·6·7장). PlayerController 가 RequireComponent 로 요구하므로 먼저
+            var vitals = M0SceneBuilder.EnsureComponent<PlayerVitals>(root);
+            SetRefArray(vitals, "effectDefs", new Object[]
+            {
+                M0SceneBuilder.LoadRequired<StatusEffectDef>(HungerDefPath),
+                M0SceneBuilder.LoadRequired<StatusEffectDef>(InjuryDefPath),
+            });
             M0SceneBuilder.EnsureComponent<PlayerController>(root);
             // 204 3장: HUD 는 오너 로컬 플레이어만 생성 (PlayerController 가 Activate)
             var localHud = M0SceneBuilder.EnsureComponent<PlayerLocalHud>(root);

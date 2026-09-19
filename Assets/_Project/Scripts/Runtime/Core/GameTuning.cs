@@ -143,5 +143,24 @@ namespace Peak.Core
 
         [Tooltip("맨틀 경로의 앞으로 가는 구간에서 발을 윗면보다 띄우는 높이 m (4장 보강 규칙 '경로가 윗면을 파고들지 않는다') — M1-2 추가 — 202 9장 반영 필요")]
         public float mantleClearance = 0.05f;
+
+        [Header("생체 값 (M1-3, 202 5·6·7장)")]
+        [Tooltip("최대 스태미나. usable = max(0, maxStamina − 상태이상 합) (5장, 100 4.1) — M1-3 추가 — 202 9장")]
+        public float maxStamina = 100f;
+
+        [Tooltip("상태이상 합계 상한. 넘치는 만큼은 버린다 (6장) — M1-3 추가 — 202 9장")]
+        public float statusEffectTotalCap = 200f;
+
+        [Tooltip("착지 속도 fallSafeSpeed 에서의 부상량 (7장 lerp 시작) — M1-3 추가 — 202 9장")]
+        public float fallMinInjury = 5f;
+
+        [Tooltip("착지 속도 fallMaxSpeed 이상에서의 부상량 (7장 lerp 끝) — M1-3 추가 — 202 9장")]
+        public float fallMaxInjury = 100f;
+
+        [Tooltip("부상이 생긴 착지 뒤 이동·점프·등반 입력을 무시하는 시간 s (7장 경직) — M1-3 추가 — 202 9장")]
+        public float landingStunDuration = 0.3f;
+
+        [Tooltip("등반 중 이동 입력이 없을 때 소모 배율 (climbCost × 이 값). 1 = 원작처럼 매달려만 있어도 소모 (5장, 301 Q11 ⚠) — M1-3 추가 — 202 9장")]
+        public float climbIdleCostMultiplier = 1f;
     }
 }

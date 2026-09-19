@@ -29,8 +29,14 @@ namespace Peak.Player.States
             Vector3 target = Vector3.zero;
             if (wish.sqrMagnitude > PlayerController.MinDirectionSqrMagnitude)
             {
-                float speed = Controller.SprintHeld ? tuning.sprintSpeed : tuning.walkSpeed;
+                // 달리기 = Sprint + 이동 + 스태미나 있음. 스태미나가 없으면 걷기 속도 (202 5장)
+                bool sprinting = Controller.IsSprinting;
+                float speed = sprinting ? tuning.sprintSpeed : tuning.walkSpeed;
                 target = Vector3.ProjectOnPlane(wish, normal).normalized * (wish.magnitude * speed);
+                if (sprinting)
+                {
+                    Controller.Vitals.Drain(tuning.sprintCost * deltaTime);
+                }
             }
 
             Vector3 velocity = body.linearVelocity;
