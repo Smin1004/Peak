@@ -118,8 +118,9 @@ class MountainData {
     Vector3 StartPos, SummitPos;
 }
 
-// 플레이어 상태 — 오너가 계산, 네트워크로 복제 (205 3장)
-class PlayerState {
+// 플레이어 생체 값 — 오너가 계산, 네트워크로 복제 (205 3장, 복제는 M4)
+// 이름 주의: 상태 기계 기반 클래스 Peak.Player.States.PlayerState 와 겹치지 않도록 PlayerVitals (2026-09-18 개명)
+class PlayerVitals {
     float Stamina;              // 0..100
     float BonusStamina;
     List<(StatusKind kind, float amount)> Effects;   // 합 ≤ 200

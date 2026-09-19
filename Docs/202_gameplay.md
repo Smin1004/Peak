@@ -26,7 +26,7 @@
 ```
 Player (NetworkObject, Rigidbody, CapsuleCollider 1.8×0.35)
  ├─ PlayerController      상태 기계 (3장), 입력 → 이동
- ├─ ClimbSensor           표면 탐지 (4장)
+ ├─ ClimbSensor           표면 탐지 (4장). PlayerController 가 소유하는 일반 클래스 (직렬화 값 없음, M1-2)
  ├─ StaminaSystem         스태미나·보너스 (5장)
  ├─ StatusEffectStack     상태이상 목록 (6장)
  ├─ FallDamage            착지 속도 → 부상 (7장)
@@ -73,6 +73,20 @@ Player (NetworkObject, Rigidbody, CapsuleCollider 1.8×0.35)
 - 하이트맵 지형은 90° 벽이 없으므로 `θ_walk` ~ 89° 범위가 전부 등반면. 오버행은 T2 (`203` 4장)
 - `θ_walk` 초기값 45° ⚠. 걷기 가능 경사와 등반면의 경계이며 `203` 의 발판/벽 경사 설계와 반드시 같은 값을 공유 (`GameTuning.walkSlope`)
 
+**보강 규칙** (2026-09-18, M1-2 발행 시 확정)
+
+| 항목 | 규칙 |
+|---|---|
+| 부착 위치 | 캡슐 **중심축 선분**에서 벽 평면까지의 최단 거리 = `r_attach`. 캡슐은 서 있는 자세 그대로라 완만한 벽(46°)에서는 발쪽이 벽에 가장 가깝다 — 이 기준이면 캡슐도 눈(카메라)도 벽을 파고들지 않는다 |
+| 몸 방향 | Climbing·Mantling 중 몸 yaw = 벽 법선 수평 성분의 반대 (벽을 본다). 카메라 yaw·pitch 는 자유 (12.1) |
+| 좌우 부호 | 4번의 `cross` 는 수학(오른손) 좌표 표기다. 구현은 **D 키 = 화면 오른쪽**이 되도록 부호를 맞춘다 (Unity 는 왼손 좌표) |
+| 내려가기 | Climbing 중 아래 입력으로 발밑 지면 판정이 걷는 면을 찾으면 → Grounded |
+| 점프 | Climbing 중 Jump 입력 무시. 등반 중 도약은 원작 미확인 — `301` Q15 |
+| 재부착 지연 | 손을 놓거나 표면을 잃은 뒤 `climbReattachDelay` 동안 재부착하지 않는다 (같은 벽에 즉시 다시 붙는 떨림 방지). 이후 Climb 을 누르고 있으면 낙하 중에도 붙는다 (10장) |
+| 커서 해제 | 커서 해제(Esc) 중 Climb 입력 무시. 커서를 다시 잠그는 클릭은 등반 시작으로 치지 않는다 — 잠근 뒤 다시 눌러야 붙는다 (Climb 과 재잠금이 같은 좌클릭) |
+| 이탈 사유 | Climbing 이탈 때 사유를 남긴다: `Released` / `LostSurface` / `Mantled` / `Exhausted`(M1-3). 7장 탈진 낙하 배율이 이 값을 본다 |
+| 맨틀 경로 | 먼저 위로(발이 윗면보다 높아질 때까지), 그다음 앞으로. 경로가 벽을 파고들지 않는다. 시간 `mantleDuration`, 이징 보간 (12.5 — 순간이동 금지) |
+
 ## 5. 스태미나 (`StaminaSystem`)
 
 ```
@@ -84,8 +98,12 @@ stamina      = clamp(stamina, 0, usable)
 
 | 규칙 | 구현 |
 |---|---|
-| 소모 | `TryConsume(amount)` — `stamina ≥ amount` 면 차감 후 true. 등반·달리기는 `dt` 곱해 호출. 부족하면 보너스에서 차감 |
-| 회복 | Grounded/Hanging(피톤) 에서 `regenDelay`(0.2초) 후 초당 `regenRate`(20). Climbing·Airborne 회복 없음 |
+| 이산 소모 (점프) | `TrySpend(amount)` — `stamina + bonus ≥ amount` 일 때만 스태미나 먼저, 모자라면 보너스에서 차감하고 true. 부족하면 아무것도 빼지 않고 false → **점프하지 않는다** ⚠ |
+| 연속 소모 (등반·달리기) | `Drain(amount × dt)` — 있는 만큼 스태미나 → 보너스 순으로 뺀다. 둘 다 0 이 되면: 등반은 `Exhausted` 이탈(4장 7번), 달리기는 걷기 속도로 |
+| 정지 매달림 | 등반 중 이동 입력이 없을 때 소모 = `climbCost × climbIdleCostMultiplier` (초기값 1 = 원작처럼 소모, `301` Q11 미결) |
+| 진입 조건 | Climbing 진입과 달리기는 `stamina + bonus > 0` 일 때만 |
+| 회복 | Grounded/Hanging(피톤) 에서 마지막 소모 후 `regenDelay`(0.2초) 뒤 초당 `regenRate`(20). Climbing·Airborne·Mantling 회복 없음 |
+| 최대치 | `maxStamina` (100) — `GameTuning` |
 | 보너스 | `bonus` 별도. 재생 없음, `stamina == 0` 일 때만 소모. 캠프파이어 +25, 음식 일부 |
 | 기절 판정 | `usable ≤ 0` → `PlayerPhase.Unconscious`. 매 프레임 확인 |
 | 기상 판정 | Unconscious 중 `usable > 0` → Alive (`stamina = 0` 부터 회복 시작) |
@@ -96,6 +114,7 @@ stamina      = clamp(stamina, 0, usable)
 - `Add(kind, amount)`, `Remove(kind, amount)`, `Set(kind, amount)` (무게용)
 - 자연 회복: 매 프레임 종류별 `StatusEffectDef` 규칙 — `decayDelay` 초 동안 새 누적이 없으면 `decayRate`/초 감소. 허기·부상·무게는 `decayRate = 0`
 - 상한: 종류별 100, 합계 200 (넘치는 만큼은 버림)
+- 범위: M1-3 은 허기·부상 두 종류의 `StatusEffectDef` 와 스택만 만든다. 소스는 낙하(부상)뿐 — `HungerTicker` 는 캠프파이어와 함께 M3
 - 누적 원인 ("소스") 처리
 
 | 소스 | 방식 |
@@ -109,9 +128,11 @@ stamina      = clamp(stamina, 0, usable)
 ## 7. 낙하 피해 (`FallDamage`)
 
 - Airborne 진입 시 최고점 추적 불필요. **착지 순간 수직 속도** `v = −velocity.y` 사용
-- `v < v_safe` → 0. 아니면 `injury = lerp(5, 100, inverseLerp(v_safe, v_max, v))`. `exhaustedFall` 이면 ×1.5 ⚠
-- 물 트리거(`WaterVolume.shallow`) 위 착지는 0
-- 적용: `StatusEffectStack.Add(Injury, injury)` + 짧은 경직(0.3초, 입력 무시) + 카메라 흔들림 (부상량 비례, 12.4)
+- **측정 주의**: 물리 스텝 안에서 이미 바닥에 부딪혀 속도가 0 이 된 뒤에 착지를 감지할 수 있다. 착지 속도는 Airborne 동안 매 물리 스텝 기록한 수직 속도 중 **착지 직전 값**을 쓴다 (빠른 낙하일수록 중요)
+- 착지 = Airborne → Grounded 전이만. 떨어지다 벽에 다시 붙는 것(Airborne → Climbing)과 벽을 타고 내려와 서는 것은 착지가 아니다
+- `v < v_safe` → 0. 아니면 `injury = lerp(fallMinInjury 5, fallMaxInjury 100, inverseLerp(v_safe, v_max, v))`. `exhaustedFall` 이면 ×1.5 ⚠ — `Exhausted` 이탈 뒤 **첫 착지 한 번만**. 종류별 상한 100 에서 잘린다
+- 물 트리거(`WaterVolume.shallow`) 위 착지는 0 (물은 M3 이후)
+- 적용: `StatusEffectStack.Add(Injury, injury)` + 부상 > 0 이면 짧은 경직(`landingStunDuration` 0.3초, 이동·점프·등반 입력 무시) + 카메라 흔들림 (부상량 비례, 12.4 — M1-4). 착지 이벤트(속도, 부상량)를 내보내 M1-4 가 흔들림·플래시를 건다
 
 ## 8. 상호작용 (`Interactor`)
 
@@ -162,6 +183,34 @@ stamina      = clamp(stamina, 0, usable)
 | 필드 | 값 | 근거 |
 |---|---|---|
 | `fieldOfView` | 65° (수직) ⚠ | `301` Q13 |
+
+**M1-2 가 추가하는 필드**
+
+| 필드 | 값 | 근거 |
+|---|---|---|
+| `climbProbeRadius` / `climbProbeDistance` | 0.4 / 0.8 m | 4장 1번 부착 탐지 SphereCast |
+| `climbAttachDistance` (`r_attach`) | 0.45 m | 4장 3번. 캡슐 반지름 0.35 + 틈 0.1 |
+| `mantleDuration` | 0.4 s | 3장 Mantling, 12.5 |
+| `climbReattachDelay` | 0.2 s ⚠ | 4장 보강 규칙 |
+| `climbSnapSpeed` | 3 m/s | 벽 거리 보정 최대 속도 — 부착·코너에서 화면이 튀지 않게 (M1-2 워커 추가) |
+| `climbFollowRadius` / `climbFollowMargin` | 0.2 / 0.3 m | 4장 5번 재탐지 구 반지름·레이 여유 (M1-2 워커 추가) |
+| `climbCornerSkin` | 0.05 m | 오목 코너 앞 벽 탐지 틈 (M1-2 워커 추가) |
+| `ledgeProbeHeight` / `ledgeProbeUp` | 1.5 / 0.3 m | 4장 6번 모서리 판정 레이 높이 (M1-2 워커 추가) |
+| `ledgeInset` / `mantleClearance` | 0.15 / 0.05 m | 올라선 발 위치 안쪽 여유, 맨틀 경로 윗면 띄움 (M1-2 워커 추가) |
+
+- 등반 가능 높이 (85° 벽, 풀 스태미나): 발이 `윗면 − ledgeProbeHeight` 에 닿으면 올라서므로 표면 거리 `(H − 1.5) / sin θ` 만 오르면 된다. 예산 15 m → **약 16.4 m 까지** 한 번에 오른다. 15 m 는 여유 약 1.5 m, 20 m 는 불가 (10장)
+
+**M1-3 가 추가하는 필드**
+
+| 필드 | 값 | 근거 |
+|---|---|---|
+| `maxStamina` | 100 | 5장, `100` 4.1 |
+| `statusEffectTotalCap` | 200 | 6장 합계 상한 |
+| `fallMinInjury` / `fallMaxInjury` | 5 / 100 | 7장 lerp 양 끝 |
+| `landingStunDuration` | 0.3 s | 7장 경직 |
+| `climbIdleCostMultiplier` | 1 ⚠ | 5장 정지 매달림, `301` Q11 |
+
+- 종류별 상한(100)·색·표시 순서·자연 회복은 `StatusEffectDef` 에셋 (`Data/StatusEffectDef/Hunger.asset`, `Injury.asset`)
 
 ## 10. 조작감 체크리스트 (M1 게이트, `Sandbox_Climb`)
 
