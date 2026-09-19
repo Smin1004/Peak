@@ -103,5 +103,45 @@ namespace Peak.Core
         [Header("스폰 (205 4장)")]
         [Tooltip("플레이어 스폰 간격 m (SpawnPoint + 접속 순서 × 간격, X 축) — M0-2 추가 — 202 9장")]
         public float spawnSpacing = 1.5f;
+
+        [Header("등반 탐지·맨틀 (M1-2, 202 4장)")]
+        [Tooltip("부착 탐지 SphereCast 반지름 m (4장 1번) — M1-2 추가 — 202 9장")]
+        public float climbProbeRadius = 0.4f;
+
+        [Tooltip("부착 탐지 SphereCast 거리 m (4장 1번) — M1-2 추가 — 202 9장")]
+        public float climbProbeDistance = 0.8f;
+
+        [Tooltip("캡슐 중심축 선분과 벽 평면의 최단 거리 m = r_attach (4장 3번·보강 규칙). 캡슐 반지름 0.35 + 틈 0.1 — M1-2 추가 — 202 9장")]
+        public float climbAttachDistance = 0.45f;
+
+        [Tooltip("모서리 올라서기 경로 보간 시간 s (3장 Mantling, 12.5) — M1-2 추가 — 202 9장")]
+        public float mantleDuration = 0.4f;
+
+        [Tooltip("Climbing 을 떠난 뒤 다시 붙지 않는 시간 s (같은 벽 즉시 재부착 떨림 방지, 4장 보강 규칙) — M1-2 추가 — 202 9장")]
+        public float climbReattachDelay = 0.2f;
+
+        [Tooltip("벽과의 거리 보정 최대 속도 m/s. 부착·코너에서 캡슐(=카메라)이 한 프레임에 튀지 않도록 거리 차이를 이 속도로 메운다 — M1-2 추가 — 202 9장 반영 필요")]
+        public float climbSnapSpeed = 3f;
+
+        [Tooltip("등반 중 벽 재탐지 SphereCast 반지름 m (4장 5번). 볼록 모서리에서 접촉 법선이 두 면 사이로 둥글게 바뀌어 코너를 돈다 — M1-2 추가 — 202 9장 반영 필요")]
+        public float climbFollowRadius = 0.2f;
+
+        [Tooltip("벽 재탐지·모서리 판정 레이를 예상 거리보다 더 쏘는 여유 m (4장 5·6번) — M1-2 추가 — 202 9장 반영 필요")]
+        public float climbFollowMargin = 0.3f;
+
+        [Tooltip("오목 코너 앞 벽 탐지 구 반지름 = climbAttachDistance − 이 값 m. 지금 붙은 벽과 겹치지 않게 하는 틈 (4장 5번) — M1-2 추가 — 202 9장 반영 필요")]
+        public float climbCornerSkin = 0.05f;
+
+        [Tooltip("모서리 판정 '캡슐 상단 앞 레이' 의 발 기준 높이 m (4장 6번). 눈(1.6)보다 조금 낮아 윗면이 보일 때 올라선다 — M1-2 추가 — 202 9장 반영 필요")]
+        public float ledgeProbeHeight = 1.5f;
+
+        [Tooltip("모서리 판정 '앞 아래 레이' 를 상단 레이보다 이만큼 위에서 쏜다 m (4장 6번) — M1-2 추가 — 202 9장 반영 필요")]
+        public float ledgeProbeUp = 0.3f;
+
+        [Tooltip("올라선 발 위치를 벽 윗변에서 캡슐 반지름보다 이만큼 더 안쪽으로 m (4장 6번) — M1-2 추가 — 202 9장 반영 필요")]
+        public float ledgeInset = 0.15f;
+
+        [Tooltip("맨틀 경로의 앞으로 가는 구간에서 발을 윗면보다 띄우는 높이 m (4장 보강 규칙 '경로가 윗면을 파고들지 않는다') — M1-2 추가 — 202 9장 반영 필요")]
+        public float mantleClearance = 0.05f;
     }
 }

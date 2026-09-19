@@ -39,3 +39,16 @@ MonoBehaviour:
   groundCheckRadius: 0.3
   groundCheckDistance: 0.15
   spawnSpacing: 1.5
+  climbProbeRadius: 0.4
+  climbProbeDistance: 0.8
+  climbAttachDistance: 0.45
+  mantleDuration: 0.4
+  climbReattachDelay: 0.2
+  climbSnapSpeed: 3
+  climbFollowRadius: 0.2
+  climbFollowMargin: 0.3
+  climbCornerSkin: 0.05
+  ledgeProbeHeight: 1.5
+  ledgeProbeUp: 0.3
+  ledgeInset: 0.15
+  mantleClearance: 0.05

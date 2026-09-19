@@ -33,6 +33,9 @@ namespace Peak.Player
         private PlayerLocalHud _localHud;
         private PeakActions _actions;
         private PlayerState[] _states;
+        private ClimbingState _climbing;
+        private MantlingState _mantling;
+        private ClimbSensor _climbSensor;
         private int _terrainMask;
         private bool _isLocalActive;
 
@@ -40,7 +43,23 @@ namespace Peak.Player
         private bool _sprintHeld;
         private bool _jumpRequested;
 
+        /// <summary>등반으로 인정하는 Climb 홀드 (커서 잠김 + 잠긴 뒤 새로 누름, 202 4장 보강 규칙).</summary>
+        private bool _climbHeld;
+
+        /// <summary>커서가 잠긴 상태에서 Climb 이 한 번 떼어졌는가 — 커서 재잠금 클릭(같은 좌클릭)을 등반 시작으로 치지 않기 위해.</summary>
+        private bool _climbArmed;
+
+        private ClimbSurface _climbSurface;
+        private Vector3 _mantleTarget;
+        private float _lastClimbExitTime = float.NegativeInfinity;
+
         public PlayerMoveState State { get; private set; }
+
+        /// <summary>마지막으로 Climbing 을 떠난 사유 (M1-3 탈진 낙하 배율이 본다).</summary>
+        public ClimbExitReason LastClimbExitReason { get; private set; }
+
+        /// <summary>현재 붙어 있는 표면 — Climbing 중에만 의미가 있다 (Mantling 중에는 올라서기 직전 표면).</summary>
+        public ClimbSurface CurrentClimbSurface => _climbSurface;
 
         /// <summary>마지막 FixedUpdate 의 지면 판정 (오너만 갱신).</summary>
         public GroundInfo Ground { get; private set; } = GroundInfo.None;
@@ -53,6 +72,18 @@ namespace Peak.Player
         internal Rigidbody Body => _body;
         internal GameTuning Tuning => GameConfig.Tuning;
         internal bool SprintHeld => _sprintHeld;
+        internal Vector2 MoveInput => _moveInput;
+        internal ClimbSensor Sensor => _climbSensor;
+
+        /// <summary>Climbing 상태가 읽고 갱신하는 현재 표면.</summary>
+        internal ClimbSurface ClimbSurfaceInternal
+        {
+            get => _climbSurface;
+            set => _climbSurface = value;
+        }
+
+        /// <summary>Mantling 이 올라설 발 위치 (진입 전에 컨트롤러가 정한다).</summary>
+        internal Vector3 MantleTarget => _mantleTarget;
 
         private void Awake()
         {
@@ -60,12 +91,16 @@ namespace Peak.Player
             _capsule = GetComponent<CapsuleCollider>();
             _cameraRig = GetComponent<PlayerCameraRig>();
             _localHud = GetComponent<PlayerLocalHud>();
+            _terrainMask = LayerMask.GetMask(Layers.Terrain);
+            _climbSensor = new ClimbSensor(_capsule, _cameraRig, _terrainMask);
+            _climbing = new ClimbingState(this);
+            _mantling = new MantlingState(this);
             _states = new PlayerState[]
             {
                 new GroundedState(this),
                 new AirborneState(this),
-                new ClimbingState(this),
-                new MantlingState(this),
+                _climbing,
+                _mantling,
                 new HangingState(this),
                 new CarryingState(this),
                 new UnconsciousState(this),
@@ -92,7 +127,6 @@ namespace Peak.Player
                 return;
             }
 
-            _terrainMask = LayerMask.GetMask(Layers.Terrain);
             _actions = new PeakActions();
             _actions.Player.Enable();
             _actions.UI.Enable();
@@ -145,6 +179,16 @@ namespace Peak.Player
             {
                 return;
             }
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            if (_debugInputActive)
+            {
+                _moveInput = _debugMove;
+                _sprintHeld = false;
+                _climbHeld = _debugClimbHeld;
+                CurrentState.Tick(Time.deltaTime);
+                return;
+            }
+#endif
             var player = _actions.Player;
             _moveInput = Vector2.ClampMagnitude(player.Move.ReadValue<Vector2>(), 1f);
             _sprintHeld = player.Sprint.IsPressed();
@@ -152,7 +196,27 @@ namespace Peak.Player
             {
                 _jumpRequested = true;
             }
+            _climbHeld = ReadClimbHeld(player.Climb.IsPressed());
             CurrentState.Tick(Time.deltaTime);
+        }
+
+        /// <summary>
+        /// 커서 해제 중 Climb 무시. Climb 과 커서 재잠금(UI.Click)이 같은 좌클릭이고 카메라 리그(실행 순서 −100)가 같은 프레임에 먼저 잠그므로,
+        /// 잠긴 상태에서 한 번 뗀 뒤 새로 누른 Climb 만 인정한다 (202 4장 보강 규칙).
+        /// </summary>
+        private bool ReadClimbHeld(bool pressed)
+        {
+            if (!_cameraRig.IsCursorLocked)
+            {
+                _climbArmed = false;
+                return false;
+            }
+            if (!pressed)
+            {
+                _climbArmed = true;
+                return false;
+            }
+            return _climbArmed;
         }
 
         private void FixedUpdate()
@@ -183,6 +247,29 @@ namespace Peak.Player
             bool jump = _jumpRequested;
             _jumpRequested = false;
 
+            // ── M1-2 등반 (Dead·Unconscious 는 M3) ──
+            if (State == PlayerMoveState.Mantling)
+            {
+                if (_mantling.IsComplete)
+                {
+                    ChangeState(PlayerMoveState.Grounded);
+                }
+                return;
+            }
+            if (State == PlayerMoveState.Climbing)
+            {
+                // Jump 무시 (301 Q15)
+                UpdateClimbingTransitions();
+                return;
+            }
+            if ((State == PlayerMoveState.Grounded || State == PlayerMoveState.Airborne) && CanStartClimb() &&
+                _climbSensor.TryAttach(_body.position, _body.rotation, Tuning, out var surface))
+            {
+                _climbSurface = surface;
+                ChangeState(PlayerMoveState.Climbing);
+                return;
+            }
+
             switch (State)
             {
                 case PlayerMoveState.Grounded:
@@ -204,6 +291,42 @@ namespace Peak.Player
                     }
                     break;
             }
+        }
+
+        /// <summary>우선순위 Mantling > Climbing(유지) > Airborne > Grounded.</summary>
+        private void UpdateClimbingTransitions()
+        {
+            if (_moveInput.y > 0f && _climbSensor.TryFindLedge(_body.position, _climbSurface, Tuning, out var stand))
+            {
+                _mantleTarget = stand;
+                ExitClimbing(ClimbExitReason.Mantled, PlayerMoveState.Mantling);
+            }
+            else if (!_climbHeld)
+            {
+                ExitClimbing(ClimbExitReason.Released, PlayerMoveState.Airborne);
+            }
+            else if (_climbing.SurfaceLost)
+            {
+                ExitClimbing(ClimbExitReason.LostSurface, PlayerMoveState.Airborne);
+            }
+            else if (_moveInput.y < 0f && Ground.IsWalkable)
+            {
+                // 아래로 내려와 걷는 면에 섰다 — 낙하가 아니므로 사유 None
+                ExitClimbing(ClimbExitReason.None, PlayerMoveState.Grounded);
+            }
+        }
+
+        private void ExitClimbing(ClimbExitReason reason, PlayerMoveState next)
+        {
+            LastClimbExitReason = reason;
+            _lastClimbExitTime = Time.time;
+            ChangeState(next);
+        }
+
+        /// <summary>Climb 홀드 + 재부착 지연 끝남. 커서 규칙은 <see cref="ReadClimbHeld"/> 가 이미 반영했다.</summary>
+        private bool CanStartClimb()
+        {
+            return _climbHeld && Time.time - _lastClimbExitTime >= Tuning.climbReattachDelay;
         }
 
         private void ChangeState(PlayerMoveState next)
@@ -303,7 +426,44 @@ namespace Peak.Player
             Vector3 velocity = _body.linearVelocity;
             float horizontalSpeed = new Vector2(velocity.x, velocity.z).magnitude;
             string slope = Ground.HasHit ? Ground.SlopeAngle.ToString("0") : "-";
-            return $"Player {State} | {horizontalSpeed:0.0} m/s | grounded {IsGrounded} | slope {slope} | look {_cameraRig.Yaw:0} / {_cameraRig.Pitch:0}";
+            string line = $"Player {State} | {horizontalSpeed:0.0} m/s | grounded {IsGrounded} | slope {slope} | look {_cameraRig.Yaw:0} / {_cameraRig.Pitch:0}";
+            if (State == PlayerMoveState.Climbing || State == PlayerMoveState.Mantling)
+            {
+                line += $" | wall {_climbSurface.SlopeAngle:0}° | exit {LastClimbExitReason}";
+            }
+            return line;
         }
+
+        // ── 자동 검증 훅 (M1-2) ─────────────────────────────────────────
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        private bool _debugInputActive;
+        private Vector2 _debugMove;
+        private bool _debugClimbHeld;
+
+        /// <summary>
+        /// 장치 입력 대신 이 값을 쓴다 (오너만 의미 있음). unity-mcp 로 플레이 모드를 돌릴 때 게임 뷰에 포커스가 없어 커서가 잠기지 않으므로
+        /// <b>커서 잠금 규칙을 건너뛴다</b>. <paramref name="jumpPressed"/> 는 한 번 누름으로 처리한다.
+        /// M1-2 자동 확인용 — M1-3(스태미나·낙하)·M1-4(HUD·피드백) 도 이 훅으로 검증한다. <see cref="ClearDebugInput"/> 으로 장치 입력에 돌려준다.
+        /// </summary>
+        public void SetDebugInput(Vector2 move, bool climbHeld, bool jumpPressed = false)
+        {
+            _debugInputActive = true;
+            _debugMove = Vector2.ClampMagnitude(move, 1f);
+            _debugClimbHeld = climbHeld;
+            if (jumpPressed)
+            {
+                _jumpRequested = true;
+            }
+        }
+
+        /// <summary>디버그 입력을 끄고 장치 입력으로 돌아간다. Climb 은 잠긴 뒤 다시 눌러야 인정된다.</summary>
+        public void ClearDebugInput()
+        {
+            _debugInputActive = false;
+            _debugMove = Vector2.zero;
+            _debugClimbHeld = false;
+            _climbArmed = false;
+        }
+#endif
     }
 }
